@@ -1,0 +1,49 @@
+name: verify-install
+# Installs the published package and checks it. Runs only after the first publish (variable NPM_PUBLISHED is 'true').
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 3 * * 1"
+permissions:
+  contents: read
+jobs:
+  verify:
+    if: vars.NPM_PUBLISHED == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, node: 22 }
+          - { os: macos-latest, node: 22 }
+          - { os: windows-latest, node: 22 }
+          - { os: ubuntu-latest, node: 20 }
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Find the latest version
+        run: echo "VERSION=$(npm view @exploratory/cli version)" >> "$GITHUB_ENV"
+      - name: npx prints the version
+        run: |
+          first=$(npx -y "@exploratory/cli@${VERSION}" --version | head -n 1)
+          [ "$first" = "expl ${VERSION}" ] || { echo "got: $first"; exit 1; }
+      - name: npm install -g prints the version
+        run: |
+          npm install -g "@exploratory/cli@${VERSION}"
+          first=$(expl --version | head -n 1)
+          [ "$first" = "expl ${VERSION}" ] || { echo "got: $first"; exit 1; }
+      - name: Without a login, server status exits with 4 and points to login
+        env:
+          EXPL_SERVER_URL: http://127.0.0.1:9
+        run: |
+          set +e
+          home="$RUNNER_TEMP/empty-home"
+          mkdir -p "$home"
+          out=$(env -u EXPL_SERVER_TOKEN -u EXPLORATORY_AGENT_TOKEN HOME="$home" USERPROFILE="$home" EXPLORATORY_HOME="$home" expl server status 2>&1)
+          code=$?
+          [ "$code" = "4" ] || { echo "exit code $code"; exit 1; }
+          echo "$out" | grep -q "expl server login"

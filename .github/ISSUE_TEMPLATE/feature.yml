@@ -1,0 +1,27 @@
+name: Feature request
+description: Suggest a change or an addition to the expl command line
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: want
+    attributes:
+      label: What do you want to do?
+    validations:
+      required: true
+  - type: textarea
+    id: workaround
+    attributes:
+      label: How do you do it today?
+    validations:
+      required: false
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where would you use it?
+      options:
+        - By hand in a terminal
+        - In CI
+        - From an AI agent
+        - Other
+    validations:
+      required: true

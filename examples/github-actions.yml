@@ -1,0 +1,16 @@
+# Fetch an item from Exploratory Server in GitHub Actions.
+# Replace <version> with the version you want to pin.
+# Create the token with `expl server token create --name ci` and store it as a repository secret.
+name: exploratory
+on: workflow_dispatch
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npx @exploratory/cli@<version> server fetch <id> --json
+        env:
+          EXPL_SERVER_TOKEN: ${{ secrets.EXPL_SERVER_TOKEN }}
+          EXPL_SERVER_URL: https://exploratory.io

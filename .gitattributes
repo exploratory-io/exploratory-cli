@@ -1,0 +1,2 @@
+* text=auto eol=lf
+package/cli/*.js -diff linguist-generated

@@ -1,0 +1,49 @@
+name: publish
+# Stages the package on npm. Started by hand only; a maintainer approves the staged publish on npm.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to publish (x.y.z); the tag v<version> must exist
+        required: true
+        type: string
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v${{ inputs.version }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - name: The tag, package.json and the input agree
+        run: node -e "const v=require('./package/package.json').version;if(v!==process.env.VERSION){console.error('package.json has '+v+', input is '+process.env.VERSION);process.exit(1)}"
+      - run: node --test
+      - run: node tools/check-links.cjs
+      - run: node tools/smoke.cjs
+      - name: Copy README and LICENSE into the package
+        run: cp README.md LICENSE package/
+      - name: The package holds exactly the expected files
+        working-directory: package
+        run: |
+          npm pack --dry-run --json > "$RUNNER_TEMP/pack.json"
+          node -e "const j=JSON.parse(require('fs').readFileSync(process.env.RUNNER_TEMP+'/pack.json','utf8'));const got=j[0].files.map(f=>f.path).sort().join(',');const want=['LICENSE','README.md','bin/expl.js','cli/expl.bundle.js','package.json'].join(',');if(got!==want){console.error('Unexpected files: '+got);process.exit(1)}"
+      - name: Install npm 11.15.0 or later if the runner has an older one (needed for staged publishing)
+        run: |
+          need=11.15.0
+          cur=$(npm --version)
+          if [ "$(printf '%s\n%s\n' "$need" "$cur" | sort -V | head -n1)" != "$need" ]; then
+            npm install -g "npm@^11.15.0"
+          fi
+      - name: Node and npm are new enough for staged publishing
+        run: node -e "const a=s=>s.split('.').map(Number);const ge=(x,y)=>{for(let i=0;i<3;i++){if(x[i]!==y[i])return x[i]>y[i]}return true};const n=a(process.versions.node);const m=a(require('child_process').execSync('npm --version',{encoding:'utf8'}).trim());if(!ge(n,[22,14,0])||!ge(m,[11,15,0])){console.error('Need Node >= 22.14.0 and npm >= 11.15.0');process.exit(1)}"
+      - name: Stage the publish
+        working-directory: package
+        run: npm stage publish

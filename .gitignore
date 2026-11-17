@@ -1,0 +1,4 @@
+node_modules/
+.internal-words
+package/README.md
+package/LICENSE

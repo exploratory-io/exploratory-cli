@@ -1,0 +1,10 @@
+# Fetch an item from Exploratory Server in Bitbucket Pipelines.
+# Replace <version> with the version you want to pin.
+# Create the token with `expl server token create --name ci` and store it as the secured variable EXPL_SERVER_TOKEN.
+image: node:22
+pipelines:
+  default:
+    - step:
+        script:
+          - export EXPL_SERVER_URL=https://exploratory.io
+          - npx @exploratory/cli@<version> server fetch <id> --json

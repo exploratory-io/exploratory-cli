@@ -1,0 +1,27 @@
+{
+  "name": "@exploratory/cli",
+  "version": "1.0.0",
+  "description": "Command-line interface for Exploratory",
+  "bin": {
+    "expl": "bin/expl.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "bin",
+    "cli",
+    "README.md",
+    "LICENSE"
+  ],
+  "license": "MIT",
+  "homepage": "https://exploratory.io",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/exploratory-io/exploratory-cli.git",
+    "directory": "package"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
