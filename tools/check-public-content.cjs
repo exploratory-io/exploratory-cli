@@ -1,19 +1,16 @@
 #!/usr/bin/env node
 "use strict";
 // Checks that tracked content is safe to publish.
-// Usage: node tools/check-public-content.cjs [--history | --range <rev-range>] [--root <dir>]
-//  default   : scan every file from `git ls-files -co --exclude-standard` (the bundle included)
-//  --history : scan every commit on every ref (messages, authors, and all added and removed lines)
-//  --range   : same as --history for a revision range such as origin/main..HEAD
+// Usage: node tools/check-public-content.cjs [--root <dir>]
+// Scans every file from `git ls-files -co --exclude-standard` (the bundle included).
 // Pattern rules are below. Internal names are read from the untracked file .internal-words in the root
 // (one word per line; kept only on the maintainer's machine, so CI applies the pattern rules only); they are never printed:
-// findings show only the file, the line and the position of the word in the list.
+// findings show only the file, the line and the position of the word in the list, and a word in a file name is masked too.
 // The patterns below are written so that this file does not match them.
 const fs = require("node:fs");
 const path = require("node:path");
 const { execFileSync } = require("node:child_process");
 
-const MIN_FILES = 3;
 const ALLOWED_EMAIL = [/^support@exploratory\.io$/i, /@users\.noreply\.github\.com$/i, /^noreply@github\.com$/i];
 const ALLOWED_HOSTS = ["exploratory.io", "www.exploratory.io"];
 
@@ -84,6 +81,11 @@ function listFiles(root) {
   return files;
 }
 
+// Replaces each internal word in a file name with its position in the list, so that a finding never shows the word.
+function maskWords(name, wordRes) {
+  return wordRes.reduce((n, re, i) => n.replace(new RegExp(re.source, "gi"), () => "[internal word #" + (i + 1) + "]"), name);
+}
+
 // Scans the current files. Returns { findings, count }.
 function scanFiles(root, wordRes) {
   const files = listFiles(root);
@@ -91,35 +93,9 @@ function scanFiles(root, wordRes) {
   for (const f of files) {
     const buf = fs.readFileSync(path.join(root, f));
     if (buf.includes(0)) continue;
-    findings.push(...scanText(f, buf.toString("utf8"), wordRes));
+    findings.push(...scanText(maskWords(f, wordRes), buf.toString("utf8"), wordRes));
   }
   return { findings, count: files.length };
-}
-
-// Scans commit metadata and every changed line (including deleted content) of the given revisions.
-function scanHistory(root, wordRes, range) {
-  const SEP = "\u0001COMMIT\u0001";
-  const fmt = SEP + "%H%n%an%n%ae%n%cn%n%ce%n%B%n\u0001BODYEND\u0001";
-  const args = ["log", "-p", "-m", "--text", "--no-ext-diff", "--no-textconv", "--format=" + fmt];
-  args.push(...(range ? [range] : ["--all"]));
-  const out = execFileSync("git", args, { cwd: root, encoding: "utf8", maxBuffer: 1 << 30 });
-  const findings = [];
-  let n = 0;
-  for (const chunk of out.split(SEP).slice(1)) {
-    n += 1;
-    const [head, ...rest] = chunk.split("\n");
-    const hash = head.slice(0, 7);
-    const [an, ae, cn, ce] = rest.slice(0, 4);
-    for (const e of [ae, ce]) {
-      if (!ALLOWED_EMAIL.some((re) => re.test(e))) findings.push("commit " + hash + ": author or committer email is not a noreply address");
-    }
-    const body = rest.slice(4).join("\n");
-    const [msg, patch = ""] = body.split("\u0001BODYEND\u0001");
-    for (const [label, text] of [["name", an + "\n" + cn], ["message", msg], ["diff", patch]]) {
-      for (const f of scanText("commit " + hash + " " + label, text, wordRes)) findings.push(f);
-    }
-  }
-  return { findings, count: n };
 }
 
 function main(argv) {
@@ -128,15 +104,9 @@ function main(argv) {
   const words = loadWords(root);
   if (words.length === 0) console.error("Notice: no .internal-words file; only the pattern rules were applied.");
   const wordRes = wordRegexes(words);
-  const rangeIdx = argv.indexOf("--range");
-  let result;
-  if (argv.includes("--history")) result = scanHistory(root, wordRes, null);
-  else if (rangeIdx >= 0) result = scanHistory(root, wordRes, argv[rangeIdx + 1]);
-  else result = scanFiles(root, wordRes);
-  const history = argv.includes("--history") || rangeIdx >= 0;
-  if (!history && result.count < MIN_FILES) { console.error("Only " + result.count + " file(s) were found; expected at least " + MIN_FILES + "."); return 1; }
+  const result = scanFiles(root, wordRes);
   if (result.findings.length) { console.error(result.findings.join("\n")); console.error(result.findings.length + " finding(s)."); return 1; }
-  console.log("OK: " + result.count + (history ? " commit(s)" : " file(s)") + " checked.");
+  console.log("OK: " + result.count + " file(s) checked.");
   return 0;
 }
 

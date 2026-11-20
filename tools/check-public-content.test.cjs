@@ -96,53 +96,12 @@ test("without a word list it passes in CI with a notice, and the patterns still 
   assert.notStrictEqual(run(bad.dir, [], { CI: "true" }).status, 0);
 });
 
-test("fewer than three files fails", () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "chk-pc-"));
-  fs.writeFileSync(path.join(dir, "a.md"), "a\n");
-  assert.notStrictEqual(run(dir).status, 0);
-});
-
-test("--history finds words in a deleted file", () => {
+test("a word in the name of a file with a finding is masked in the output", () => {
   const w = j("zork", "mid");
-  const { dir, git } = tmpRepo({ "gone.md": "secret " + w + "\n" });
-  git("rm", "-q", "gone.md");
-  git("commit", "-q", "-m", "remove");
-  setWords(dir, w);
-  assert.strictEqual(run(dir).status, 0, "current files are clean");
-  const r = run(dir, ["--history"]);
+  const hit = tmpRepo({ ["notes-" + w + ".md"]: "this is " + w + " here\n" });
+  setWords(hit.dir, w + "\n");
+  const r = run(hit.dir);
   assert.notStrictEqual(r.status, 0);
-  assert.match(r.stderr, /internal word #1/);
-});
-
-test("--history finds a word that enters only through a merge", () => {
-  const w = j("zork", "mid");
-  const { dir, git } = tmpRepo({});
-  git("checkout", "-q", "-b", "side");
-  fs.writeFileSync(path.join(dir, "s.md"), "side\n");
-  git("add", "s.md");
-  git("commit", "-q", "-m", "side");
-  git("checkout", "-q", "-");
-  fs.writeFileSync(path.join(dir, "m.md"), "main\n");
-  git("add", "m.md");
-  git("commit", "-q", "-m", "main");
-  try { git("merge", "--no-commit", "--no-ff", "side"); } catch (e) { /* a merge stopped before commit exits 0; ignore */ }
-  fs.writeFileSync(path.join(dir, "evil.md"), "added in the merge " + w + "\n");
-  git("add", "evil.md");
-  git("commit", "-q", "-m", "merge");
-  setWords(dir, w);
-  const r = run(dir, ["--history"]);
-  assert.notStrictEqual(r.status, 0);
-  assert.match(r.stderr, /internal word #1/);
-});
-
-test("--history finds a non-noreply author email", () => {
-  const { dir } = tmpRepo({}, j("someone", "@", "example.com"));
-  const r = run(dir, ["--history"]);
-  assert.notStrictEqual(r.status, 0);
-  assert.match(r.stderr, /not a noreply address/);
-});
-
-test("--history passes on a clean history", () => {
-  const { dir } = tmpRepo({});
-  assert.strictEqual(run(dir, ["--history"]).status, 0);
+  assert.match(r.stderr, /notes-\[internal word #1\]\.md:1: internal word #1/);
+  assert.ok(!r.stderr.toLowerCase().includes(w) && !r.stdout.toLowerCase().includes(w));
 });

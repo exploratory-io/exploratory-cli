@@ -24,6 +24,17 @@ test("versions are ordered by the semver rules, pre-releases included", () => {
   assert.strictEqual(compareVersions("1.0.0-rc.1", "1.0.0-rc.1"), 0);
 });
 
+test("build metadata is ignored", () => {
+  assert.strictEqual(compareVersions("1.0.0+build.1", "1.0.0"), 0);
+  assert.ok(compareVersions("1.0.1", "1.0.0+build.1") > 0);
+  assert.ok(compareVersions("1.0.0-rc.1+b.2", "1.0.0-rc.2") < 0);
+});
+
+test("pre-release numbers beyond 2^53 are compared exactly", () => {
+  assert.ok(compareVersions("1.0.0-rc.9007199254740993", "1.0.0-rc.9007199254740992") > 0);
+  assert.ok(compareVersions("1.0.0-rc.9007199254740992", "1.0.0-rc.9007199254740993") < 0);
+});
+
 test("a version greater than every version on npm passes", () => {
   const r = run("1.0.0", JSON.stringify(["0.0.0-stage", "1.0.0-rc.1"]));
   assert.strictEqual(r.status, 0, r.stderr);
@@ -40,4 +51,8 @@ test("a version already on npm or lower fails", () => {
 test("a single version printed as a JSON string, and no version yet, are read", () => {
   assert.strictEqual(run("1.0.0", JSON.stringify("1.0.0")).status, 1);
   assert.strictEqual(run("1.0.0", "[]\n").status, 0);
+});
+
+test("broken: an empty output of npm view fails instead of passing as unpublished", () => {
+  assert.notStrictEqual(run("1.0.0", "").status, 0);
 });

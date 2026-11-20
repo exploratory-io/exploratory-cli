@@ -43,7 +43,7 @@ test("import refuses a missing or malformed --version", () => {
   assert.ok(!fs.existsSync(path.join(root, "package", "cli", "expl.bundle.js")));
 });
 
-const changelogOf = (root) => sections(fs.readFileSync(path.join(root, "CHANGELOG.md"), "utf8"));
+const changelogOf = (root) => sections(fs.readFileSync(path.join(root, "CHANGELOG.md"), "utf8")).map((x) => ({ version: x.version, desktopVersion: x.desktopVersion }));
 
 test("import writes a CHANGELOG section for the npm version whose first line names the Desktop version", () => {
   const root = tmpRoot();

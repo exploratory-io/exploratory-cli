@@ -29,7 +29,7 @@ jobs:
         run: |
           if ! npm view @exploratory/cli versions --json > "$RUNNER_TEMP/npm-versions.json" 2> "$RUNNER_TEMP/npm-view.err"; then
             # E404: the package is not on npm yet, so there is nothing to compare with.
-            if grep -q E404 "$RUNNER_TEMP/npm-view.err" "$RUNNER_TEMP/npm-versions.json"; then echo '[]' > "$RUNNER_TEMP/npm-versions.json"; else cat "$RUNNER_TEMP/npm-view.err"; exit 1; fi
+            if grep -qx 'npm error code E404' "$RUNNER_TEMP/npm-view.err"; then echo '[]' > "$RUNNER_TEMP/npm-versions.json"; else cat "$RUNNER_TEMP/npm-view.err"; exit 1; fi
           fi
           node tools/check-npm-version.cjs "$VERSION" "$RUNNER_TEMP/npm-versions.json"
       - run: node --test

@@ -7,6 +7,7 @@ const { sections, addSection, checkChangelog } = require("./changelog.cjs");
 const { tmpRoot } = require("./fake-release.cjs");
 
 const D = "2026-11-20";
+const pick = (x) => ({ version: x.version, desktopVersion: x.desktopVersion });
 const read = (f) => fs.readFileSync(f, "utf8").replace(/\r\n/g, "\n");
 
 test("the top section of this repository's CHANGELOG.md matches package/package.json", () => {
@@ -25,7 +26,7 @@ test("the first section replaces the placeholder line and names the Desktop vers
 test("a new section goes above the older ones, whose text after the Desktop version is kept", () => {
   const old = "# Changelog\n\nIntro.\n\n## 1.0.0 - 2026-11-18\n\nBuilt from the `expl` in Exploratory Desktop 17.0.1 (source commit a6025d748f).\n\nNotes of 1.0.0.\n";
   const two = addSection(old, "1.0.1", "17.0.2", D);
-  assert.deepStrictEqual(sections(two), [{ version: "1.0.1", desktopVersion: "17.0.2" }, { version: "1.0.0", desktopVersion: "17.0.1" }]);
+  assert.deepStrictEqual(sections(two).map(pick), [{ version: "1.0.1", desktopVersion: "17.0.2" }, { version: "1.0.0", desktopVersion: "17.0.1" }]);
   assert.ok(two.endsWith(old.slice(old.indexOf("## 1.0.0"))));
 });
 
@@ -67,5 +68,31 @@ test("broken: changing the version of the top CHANGELOG section alone fails", ()
 
 test("a CHANGELOG.md with Windows line endings is read the same way", () => {
   const text = addSection("# Changelog\n\nIntro.\n", "1.0.0", "16.6.1", D).replace(/\n/g, "\r\n");
-  assert.deepStrictEqual(sections(text), [{ version: "1.0.0", desktopVersion: "16.6.1" }]);
+  assert.deepStrictEqual(sections(text).map(pick), [{ version: "1.0.0", desktopVersion: "16.6.1" }]);
 });
+
+// Each broken form of a section: [description, text of the section].
+const BROKEN = [
+  ["no date in the heading", "## 1.0.1\n\nBuilt from the `expl` in Exploratory Desktop 17.0.2.\n"],
+  ["a space on the blank line", "## 1.0.1 - 2026-11-20\n \nBuilt from the `expl` in Exploratory Desktop 17.0.2.\n"],
+  ["no period at the end of the Desktop line", "## 1.0.1 - 2026-11-20\n\nBuilt from the `expl` in Exploratory Desktop 17.0.2\n"],
+  ["no Desktop version", "## 1.0.1 - 2026-11-20\n\nBuilt from the `expl` in Exploratory Desktop INVALID.\n"],
+];
+const OLD = "## 1.0.0 - 2026-11-18\n\nBuilt from the `expl` in Exploratory Desktop 17.0.1.\n";
+
+for (const [what, section] of BROKEN) {
+  test("broken: an unreadable top section fails the check (" + what + ")", () => {
+    const root = tmpRoot();
+    const pf = path.join(root, "package", "package.json");
+    const pkg = JSON.parse(read(pf));
+    pkg.version = "1.0.0";
+    fs.writeFileSync(pf, JSON.stringify(pkg));
+    fs.writeFileSync(path.join(root, "CHANGELOG.md"), "# Changelog\n\nIntro.\n\n" + section + "\n" + OLD);
+    assert.match(checkChangelog(root), /Cannot read the top section "## 1\.0\.1/);
+  });
+
+  test("broken: an unreadable section of the same version stops addSection (" + what + ")", () => {
+    const text = "# Changelog\n\nIntro.\n\n" + section + "\n" + OLD;
+    assert.throws(() => addSection(text, "1.0.1", "17.0.9", D), /Cannot read the section "## 1\.0\.1/);
+  });
+}
