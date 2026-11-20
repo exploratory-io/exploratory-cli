@@ -6,13 +6,16 @@ on:
 permissions:
   contents: read
 jobs:
-  links:
+  checks:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - run: node --test
+      # The internal word list stays on the maintainer's machine; CI applies the pattern rules only, and says so.
+      - run: node tools/check-public-content.cjs
       - run: node tools/check-links.cjs
   smoke:
     runs-on: ubuntu-latest
