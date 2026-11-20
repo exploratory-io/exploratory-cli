@@ -25,7 +25,15 @@ jobs:
           registry-url: https://registry.npmjs.org
       - name: The tag, package.json and the input agree
         run: node -e "const v=require('./package/package.json').version;if(v!==process.env.VERSION){console.error('package.json has '+v+', input is '+process.env.VERSION);process.exit(1)}"
+      - name: The version is greater than every version on npm
+        run: |
+          if ! npm view @exploratory/cli versions --json > "$RUNNER_TEMP/npm-versions.json" 2> "$RUNNER_TEMP/npm-view.err"; then
+            # E404: the package is not on npm yet, so there is nothing to compare with.
+            if grep -qx 'npm error code E404' "$RUNNER_TEMP/npm-view.err"; then echo '[]' > "$RUNNER_TEMP/npm-versions.json"; else cat "$RUNNER_TEMP/npm-view.err"; exit 1; fi
+          fi
+          node tools/check-npm-version.cjs "$VERSION" "$RUNNER_TEMP/npm-versions.json"
       - run: node --test
+      - run: node tools/check-public-content.cjs
       - run: node tools/check-links.cjs
       - run: node tools/smoke.cjs
       - name: Copy README and LICENSE into the package
