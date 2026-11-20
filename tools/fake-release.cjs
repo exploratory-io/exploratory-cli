@@ -26,7 +26,11 @@ function fakeRelease(version, extra = "", skillBody = "SKILL BODY", opts = {}) {
   return dir;
 }
 
-// Copies the package skeleton (bin and package.json) of this repository into a new temp root.
+// A made-up internal word for the tests; the real list is never used here.
+const FAKE_WORD = "zqxfakeword";
+
+// Copies the package skeleton (bin and package.json) of this repository into a new temp root, with a CHANGELOG.md
+// that has no section yet and an .internal-words holding FAKE_WORD.
 function tmpRoot() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "cli-root-"));
   const src = path.join(__dirname, "..", "package");
@@ -36,7 +40,9 @@ function tmpRoot() {
   const pkg = JSON.parse(fs.readFileSync(path.join(src, "package.json"), "utf8"));
   pkg.version = "0.0.0";
   fs.writeFileSync(path.join(root, "package", "package.json"), JSON.stringify(pkg, null, 2) + "\n");
+  fs.writeFileSync(path.join(root, "CHANGELOG.md"), "# Changelog\n\nIntro.\n\nNo release has been imported yet.\n");
+  fs.writeFileSync(path.join(root, ".internal-words"), FAKE_WORD + "\n");
   return root;
 }
 
-module.exports = { fakeRelease, tmpRoot };
+module.exports = { fakeRelease, tmpRoot, FAKE_WORD };

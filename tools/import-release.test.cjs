@@ -4,7 +4,8 @@ const assert = require("node:assert");
 const fs = require("node:fs");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
-const { fakeRelease, tmpRoot } = require("./fake-release.cjs");
+const { fakeRelease, tmpRoot, FAKE_WORD } = require("./fake-release.cjs");
+const { sections } = require("./changelog.cjs");
 
 const IMPORT = path.join(__dirname, "import-release.cjs");
 const SMOKE = path.join(__dirname, "smoke.cjs");
@@ -40,6 +41,60 @@ test("import refuses a missing or malformed --version", () => {
   assert.notStrictEqual(bad.status, 0);
   assert.match(bad.stderr, /--version must be x\.y\.z/);
   assert.ok(!fs.existsSync(path.join(root, "package", "cli", "expl.bundle.js")));
+});
+
+const changelogOf = (root) => sections(fs.readFileSync(path.join(root, "CHANGELOG.md"), "utf8"));
+
+test("import writes a CHANGELOG section for the npm version whose first line names the Desktop version", () => {
+  const root = tmpRoot();
+  assert.strictEqual(imp(root, fakeRelease("16.6.1"), "1.0.0").status, 0);
+  assert.strictEqual(imp(root, fakeRelease("16.6.2"), "1.0.1").status, 0);
+  assert.deepStrictEqual(changelogOf(root), [{ version: "1.0.1", desktopVersion: "16.6.2" }, { version: "1.0.0", desktopVersion: "16.6.1" }]);
+  assert.ok(!fs.readFileSync(path.join(root, "CHANGELOG.md"), "utf8").includes("No release has been imported yet."));
+});
+
+test("importing the same version from the same Desktop build again keeps one section", () => {
+  const root = tmpRoot();
+  assert.strictEqual(imp(root, fakeRelease("16.6.1"), "1.0.0").status, 0);
+  const r = imp(root, fakeRelease("16.6.1"), "1.0.0");
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.deepStrictEqual(changelogOf(root), [{ version: "1.0.0", desktopVersion: "16.6.1" }]);
+});
+
+test("broken: a CHANGELOG section with another Desktop version stops the import before anything is written", () => {
+  const root = tmpRoot();
+  assert.strictEqual(imp(root, fakeRelease("16.6.1"), "1.0.0").status, 0);
+  const cl = path.join(root, "CHANGELOG.md");
+  fs.writeFileSync(cl, fs.readFileSync(cl, "utf8").replace("Desktop 16.6.1.", "Desktop 16.5.0."));
+  const bundle = fs.readFileSync(path.join(root, "package", "cli", "expl.bundle.js"), "utf8");
+  const r = imp(root, fakeRelease("16.6.1", "// new build"), "1.0.0");
+  assert.notStrictEqual(r.status, 0);
+  assert.match(r.stderr, /already has 1\.0\.0 built from Exploratory Desktop 16\.5\.0, but this build is 16\.6\.1/);
+  assert.strictEqual(fs.readFileSync(path.join(root, "package", "cli", "expl.bundle.js"), "utf8"), bundle);
+});
+
+test("broken: importing without .internal-words fails", () => {
+  const root = tmpRoot();
+  fs.rmSync(path.join(root, ".internal-words"));
+  const r = imp(root, fakeRelease("1.2.3"));
+  assert.notStrictEqual(r.status, 0);
+  assert.match(r.stderr, /Cannot read .*\.internal-words \(ENOENT\); the internal word list is required/);
+});
+
+test("importing with an empty .internal-words fails", () => {
+  const root = tmpRoot();
+  fs.writeFileSync(path.join(root, ".internal-words"), "\n  \r\n");
+  const r = imp(root, fakeRelease("1.2.3"));
+  assert.notStrictEqual(r.status, 0);
+  assert.match(r.stderr, /\.internal-words is empty/);
+});
+
+test("an internal word in an imported file fails the import without printing the word", () => {
+  const root = tmpRoot();
+  const r = imp(root, fakeRelease("1.2.3", "", "SKILL BODY " + FAKE_WORD));
+  assert.notStrictEqual(r.status, 0);
+  assert.match(r.stderr, /skills\/exploratory-expl\/SKILL\.md:1: internal word #1/);
+  assert.ok(!(r.stdout + r.stderr).includes(FAKE_WORD));
 });
 
 test("import refuses a development build", () => {
