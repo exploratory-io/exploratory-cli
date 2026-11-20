@@ -5,7 +5,8 @@
 // Scans every file from `git ls-files -co --exclude-standard` (the bundle included).
 // Pattern rules are below. Internal names are read from the untracked file .internal-words in the root
 // (one word per line; kept only on the maintainer's machine, so CI applies the pattern rules only); they are never printed:
-// findings show only the file, the line and the position of the word in the list, and a word in a file name is masked too.
+// findings show only the file, the line and the position of the word in the list. Paths are checked for the words too,
+// and a word in a path is masked in the output.
 // The patterns below are written so that this file does not match them.
 const fs = require("node:fs");
 const path = require("node:path");
@@ -91,9 +92,11 @@ function scanFiles(root, wordRes) {
   const files = listFiles(root);
   const findings = [];
   for (const f of files) {
+    const label = maskWords(f, wordRes);
+    wordRes.forEach((re, i) => { if (re.test(f)) findings.push(label + ": internal word #" + (i + 1) + " in the path"); });
     const buf = fs.readFileSync(path.join(root, f));
     if (buf.includes(0)) continue;
-    findings.push(...scanText(maskWords(f, wordRes), buf.toString("utf8"), wordRes));
+    findings.push(...scanText(label, buf.toString("utf8"), wordRes));
   }
   return { findings, count: files.length };
 }

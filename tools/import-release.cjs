@@ -48,6 +48,17 @@ function importRelease(from, root, version) {
   const today = new Date().toISOString().slice(0, 10);
   const newChangelog = addSection(fs.readFileSync(changelog, "utf8"), version, desktopVersion, today);
 
+  try {
+    writeImport(root, text, version, changelog, newChangelog);
+  } catch (e) {
+    e.message += "\nThe import stopped part way. To undo it: git checkout HEAD -- package/cli/expl.bundle.js package/package.json skills CHANGELOG.md";
+    throw e;
+  }
+  return { version, desktopVersion };
+}
+
+// Writes the bundle, package.json, skills/ and CHANGELOG.md, then checks them with the internal word list.
+function writeImport(root, text, version, changelog, newChangelog) {
   fs.mkdirSync(path.join(root, "package", "cli"), { recursive: true });
   fs.writeFileSync(path.join(root, "package", "cli", "expl.bundle.js"), text);
   const pkgFile = path.join(root, "package", "package.json");
@@ -64,7 +75,6 @@ function importRelease(from, root, version) {
   }
   fs.writeFileSync(changelog, newChangelog);
   checkInternalWords(root);
-  return { version, desktopVersion };
 }
 
 function main(argv) {

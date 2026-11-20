@@ -70,6 +70,7 @@ test("broken: a CHANGELOG section with another Desktop version stops the import 
   const r = imp(root, fakeRelease("16.6.1", "// new build"), "1.0.0");
   assert.notStrictEqual(r.status, 0);
   assert.match(r.stderr, /already has 1\.0\.0 built from Exploratory Desktop 16\.5\.0, but this build is 16\.6\.1/);
+  assert.doesNotMatch(r.stderr, /To undo it/);
   assert.strictEqual(fs.readFileSync(path.join(root, "package", "cli", "expl.bundle.js"), "utf8"), bundle);
 });
 
@@ -79,6 +80,7 @@ test("broken: importing without .internal-words fails", () => {
   const r = imp(root, fakeRelease("1.2.3"));
   assert.notStrictEqual(r.status, 0);
   assert.match(r.stderr, /Cannot read .*\.internal-words \(ENOENT\); the internal word list is required/);
+  assert.match(r.stderr, /To undo it: git checkout HEAD -- package\/cli\/expl\.bundle\.js package\/package\.json skills CHANGELOG\.md/);
 });
 
 test("importing with an empty .internal-words fails", () => {

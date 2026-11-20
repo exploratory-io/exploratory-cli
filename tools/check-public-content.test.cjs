@@ -96,6 +96,16 @@ test("without a word list it passes in CI with a notice, and the patterns still 
   assert.notStrictEqual(run(bad.dir, [], { CI: "true" }).status, 0);
 });
 
+test("broken: an internal word only in a path fails, and the path is masked in the output", () => {
+  const w = j("zork", "mid");
+  const hit = tmpRepo({ [w + "-notes.md"]: "nothing to see\n" });
+  setWords(hit.dir, w + "\n");
+  const r = run(hit.dir);
+  assert.notStrictEqual(r.status, 0);
+  assert.match(r.stderr, /\[internal word #1\]-notes\.md: internal word #1 in the path/);
+  assert.ok(!r.stderr.toLowerCase().includes(w) && !r.stdout.toLowerCase().includes(w));
+});
+
 test("a word in the name of a file with a finding is masked in the output", () => {
   const w = j("zork", "mid");
   const hit = tmpRepo({ ["notes-" + w + ".md"]: "this is " + w + " here\n" });
