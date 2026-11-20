@@ -1,16 +1,26 @@
 # Releasing
 
-This page is for the people who publish `expl` to npm. The package has its own version (semantic versioning, starting at 1.0.0). Its contents always come from the `expl` in a released Exploratory Desktop build, and `CHANGELOG.md` records which one.
+This page is for the people who publish `expl` to npm. The package has its own version (semantic versioning, starting at 1.0.0). Its contents come from the `expl` of a commit on the tam master branch, and `CHANGELOG.md` records which commit and which Exploratory Desktop version that commit has.
 
-## 1. Import a release build
+## 1. Import from tam master
 
-Get the folder of the production build. It contains `package.json` and `cli/expl.bundle.js`.
+In a tam checkout with its `node_modules` installed (the root and `src/`), fetch first so that `origin/master` is current. Then, in this repository:
+
+```bash
+node tools/import-release.cjs --tam <tam checkout> [--ref <commit>] --version <x.y.z>
+```
+
+`--ref` defaults to `origin/master`. The script resolves it to a commit in the tam checkout, clones that commit into a temporary folder with `git clone --shared` (the tam checkout itself is not changed), links the checkout's `node_modules` and `src/node_modules` into the clone, and builds only the `expl-cli` entry of tam's `webpack.production.config.js`, without a source map. The Desktop version is the one of `public/package.json` in that commit. It then imports the bundle as described below, writing the first line of the section as "Built from the `expl` in tam master <10-digit commit> (Exploratory Desktop <Desktop version>).", and removes the temporary clone, also when a step fails.
+
+When the bundle was built by hand, import its folder instead. It contains `package.json` and `cli/expl.bundle.js`:
 
 ```bash
 node tools/import-release.cjs --from <folder> --version <x.y.z>
 ```
 
-The script copies the bundle to `package/cli/`, sets the version in `package/package.json` to `--version`, reports the Desktop version found in the folder's `package.json`, rebuilds the two files under `skills/` by running the bundle with an empty home, and adds a section to the top of `CHANGELOG.md` (`## <version> - <date>`, first line "Built from the `expl` in Exploratory Desktop <Desktop version>."). When `CHANGELOG.md` already has a section for that version, its Desktop version must be the one of the build, or the import stops before writing anything. After the import it runs the content check with the internal word list `.internal-words` of the repository root (one word per line, never committed), and fails when that file is missing, empty or unreadable. It refuses a development build.
+The section's first line is then "Built from the `expl` in Exploratory Desktop <Desktop version>.".
+
+Both forms copy the bundle to `package/cli/`, set the version in `package/package.json` to `--version`, rebuild the two files under `skills/` by running the bundle with an empty home, and add a section to the top of `CHANGELOG.md` (`## <version> - <date>` and the first line above). When `CHANGELOG.md` already has a section for that version, its Desktop version must be the one of the build, or the import stops before writing anything. After the import the script runs the content check with the internal word list `.internal-words` of the repository root (one word per line, never committed), and fails when that file is missing, empty or unreadable. It refuses a development build.
 
 Then:
 

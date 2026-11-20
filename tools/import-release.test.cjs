@@ -2,10 +2,12 @@
 const test = require("node:test");
 const assert = require("node:assert");
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 const { fakeRelease, tmpRoot, FAKE_WORD } = require("./fake-release.cjs");
 const { sections } = require("./changelog.cjs");
+const { importFromTam } = require("./import-release.cjs");
 
 const IMPORT = path.join(__dirname, "import-release.cjs");
 const SMOKE = path.join(__dirname, "smoke.cjs");
@@ -151,4 +153,89 @@ test("smoke: a wrong version line fails with the version comparison message", ()
   const r = smoke(root);
   assert.notStrictEqual(r.status, 0);
   assert.match(r.stderr, /first line is "expl 1\.2\.3", expected "expl 9\.9\.9"/);
+});
+
+// A fake tam checkout: a git repository whose commits hold public/package.json with the given Desktop versions, the
+// last one checked out, with untracked node_modules/ and src/node_modules/. Returns { tam, commits }.
+const git = (cwd, ...args) => {
+  const r = spawnSync("git", ["-c", "user.name=t", "-c", "user.email=t@users.noreply.github.com", "-c", "core.autocrlf=false", ...args], { cwd, encoding: "utf8" });
+  assert.strictEqual(r.status, 0, r.stderr);
+  return r.stdout.trim();
+};
+function fakeTam(...desktopVersions) {
+  const tam = fs.mkdtempSync(path.join(os.tmpdir(), "fake-tam-"));
+  git(tam, "init", "--quiet");
+  fs.mkdirSync(path.join(tam, "public"));
+  fs.mkdirSync(path.join(tam, "src"));
+  fs.writeFileSync(path.join(tam, "src", "app.js"), "\n");
+  fs.writeFileSync(path.join(tam, ".gitignore"), "node_modules/\n");
+  const commits = desktopVersions.map((v) => {
+    fs.writeFileSync(path.join(tam, "public", "package.json"), JSON.stringify({ name: "x", version: v }) + "\n");
+    git(tam, "add", "-A");
+    git(tam, "commit", "--quiet", "-m", v);
+    return git(tam, "rev-parse", "HEAD");
+  });
+  fs.mkdirSync(path.join(tam, "node_modules"));
+  fs.mkdirSync(path.join(tam, "src", "node_modules"));
+  return { tam, commits };
+}
+
+// A build step for the tests: writes the fake bundle where webpack would, and records the clone it ran in.
+function fakeBuild(seen) {
+  return (dir) => {
+    seen.dir = dir;
+    seen.desktopVersion = JSON.parse(fs.readFileSync(path.join(dir, "public", "package.json"), "utf8")).version;
+    seen.nodeModules = fs.realpathSync(path.join(dir, "node_modules"));
+    fs.mkdirSync(path.join(dir, "public", "cli"), { recursive: true });
+    fs.copyFileSync(path.join(fakeRelease("0.0.0"), "cli", "expl.bundle.js"), path.join(dir, "public", "cli", "expl.bundle.js"));
+  };
+}
+
+test("--tam builds the commit of origin/master by default and names it in the CHANGELOG, leaving the checkout as it was", () => {
+  const { tam, commits } = fakeTam("17.0.1", "17.0.2");
+  git(tam, "update-ref", "refs/remotes/origin/master", commits[0]);
+  const root = tmpRoot();
+  const seen = {};
+  const r = importFromTam(tam, "origin/master", root, "1.0.1", fakeBuild(seen));
+  assert.deepStrictEqual(r, { version: "1.0.1", desktopVersion: "17.0.1", commit: commits[0].slice(0, 10) });
+  assert.strictEqual(seen.desktopVersion, "17.0.1");
+  assert.strictEqual(seen.nodeModules, fs.realpathSync(path.join(tam, "node_modules")));
+  assert.ok(fs.readFileSync(path.join(root, "CHANGELOG.md"), "utf8").includes("Built from the `expl` in tam master " + commits[0].slice(0, 10) + " (Exploratory Desktop 17.0.1).\n"));
+  assert.strictEqual(JSON.parse(fs.readFileSync(path.join(root, "package", "package.json"), "utf8")).version, "1.0.1");
+  assert.strictEqual(smoke(root).status, 0, smoke(root).stderr);
+  assert.ok(!fs.existsSync(seen.dir), "the temporary clone is removed");
+  assert.strictEqual(git(tam, "rev-parse", "HEAD"), commits[1]);
+  assert.strictEqual(git(tam, "status", "--porcelain"), "");
+});
+
+test("--ref picks another tam commit", () => {
+  const { tam, commits } = fakeTam("17.0.1", "17.0.2");
+  const root = tmpRoot();
+  const r = importFromTam(tam, "HEAD", root, "1.0.1", fakeBuild({}));
+  assert.strictEqual(r.desktopVersion, "17.0.2");
+  assert.strictEqual(r.commit, commits[1].slice(0, 10));
+});
+
+test("broken: a failing build stops the import, writes nothing and still removes the temporary clone", () => {
+  const { tam } = fakeTam("17.0.2");
+  const root = tmpRoot();
+  let dir;
+  assert.throws(() => importFromTam(tam, "HEAD", root, "1.0.1", (d) => { dir = d; throw new Error("webpack failed"); }), /webpack failed/);
+  assert.ok(dir && !fs.existsSync(dir), "the temporary clone is removed");
+  assert.ok(!fs.existsSync(path.join(root, "package", "cli", "expl.bundle.js")));
+});
+
+test("an unknown --ref fails before cloning", () => {
+  const { tam } = fakeTam("17.0.2");
+  let built = false;
+  assert.throws(() => importFromTam(tam, "no-such-ref", tmpRoot(), "1.0.1", () => { built = true; }), /rev-parse/);
+  assert.strictEqual(built, false);
+});
+
+test("the command needs exactly one of --from and --tam", () => {
+  const root = tmpRoot();
+  const neither = spawnSync(process.execPath, [IMPORT, "--version", "1.0.1", "--root", root], { encoding: "utf8" });
+  assert.strictEqual(neither.status, 2);
+  const both = spawnSync(process.execPath, [IMPORT, "--from", fakeRelease("17.0.2"), "--tam", ".", "--version", "1.0.1", "--root", root], { encoding: "utf8" });
+  assert.strictEqual(both.status, 2);
 });

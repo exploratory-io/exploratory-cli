@@ -71,8 +71,17 @@ test("a CHANGELOG.md with Windows line endings is read the same way", () => {
   assert.deepStrictEqual(sections(text).map(pick), [{ version: "1.0.0", desktopVersion: "16.6.1" }]);
 });
 
+test("with a tam commit the first line names tam master and the Desktop version, and is read back", () => {
+  const text = addSection("# Changelog\n\nIntro.\n\n" + "## 1.0.0 - 2026-11-18\n\nBuilt from the `expl` in Exploratory Desktop 17.0.1 (source commit a6025d748f).\n", "1.0.1", "17.0.2", D, "3aadb1c6c2");
+  assert.ok(text.includes("## 1.0.1 - 2026-11-20\n\nBuilt from the `expl` in tam master 3aadb1c6c2 (Exploratory Desktop 17.0.2).\n"));
+  assert.deepStrictEqual(sections(text).map(pick), [{ version: "1.0.1", desktopVersion: "17.0.2" }, { version: "1.0.0", desktopVersion: "17.0.1" }]);
+  assert.throws(() => addSection(text, "1.0.1", "17.0.3", D, "3aadb1c6c2"), /already has 1\.0\.1 built from Exploratory Desktop 17\.0\.2, but this build is 17\.0\.3/);
+});
+
 // Each broken form of a section: [description, text of the section].
 const BROKEN = [
+  ["a tam commit that is not 10 digits", "## 1.0.1 - 2026-11-20\n\nBuilt from the `expl` in tam master 3aadb1c (Exploratory Desktop 17.0.2).\n"],
+  ["no parentheses around the Desktop version after the tam commit", "## 1.0.1 - 2026-11-20\n\nBuilt from the `expl` in tam master 3aadb1c6c2 Exploratory Desktop 17.0.2.\n"],
   ["no date in the heading", "## 1.0.1\n\nBuilt from the `expl` in Exploratory Desktop 17.0.2.\n"],
   ["a space on the blank line", "## 1.0.1 - 2026-11-20\n \nBuilt from the `expl` in Exploratory Desktop 17.0.2.\n"],
   ["no period at the end of the Desktop line", "## 1.0.1 - 2026-11-20\n\nBuilt from the `expl` in Exploratory Desktop 17.0.2\n"],
