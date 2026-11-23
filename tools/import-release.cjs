@@ -5,10 +5,11 @@
 //        node tools/import-release.cjs --from <folder> --version <x.y.z> [--root <dir>]
 // --tam builds the expl bundle of a tam commit (default origin/master) in a temporary clone and imports it like --from;
 // the tam checkout itself is not changed.
-// <folder> must contain cli/expl.bundle.js and package.json. --version is the npm version of this package, which is
-// independent of Desktop; the version in the folder's package.json is the Desktop build it came from, and is written as the
-// first line of the version's section in CHANGELOG.md. After the import, check-public-content runs with the internal word
-// list .internal-words of the root, which must exist and hold at least one word.
+// <folder> must contain cli/expl.bundle.js and package.json, as Exploratory.app/Contents/Resources/app.nw of a release
+// build does. --version is the npm version of this package, which is independent of Desktop; the version in the folder's
+// package.json (x.y.z, or x.y.z_<platform> as in 17.0.5_MAC_ARM) is the Desktop build it came from, and its x.y.z is
+// written as the first line of the version's section in CHANGELOG.md. After the import, check-public-content runs with the
+// internal word list .internal-words of the root, which must exist and hold at least one word.
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -17,9 +18,15 @@ const { runExpl, SKILLS } = require("./expl-runner.cjs");
 const { scanFiles, parseWords, wordRegexes } = require("./check-public-content.cjs");
 const { addSection } = require("./changelog.cjs");
 
-// Marks a development build (devtool "eval" output or a source map reference).
+// Marks a development build (devtool "eval" output or a source map reference), checked after MAP_LINK is dropped.
 const DEV_BUILD_MARKER = /The "eva[l]" devtool|source[M]appingURL/;
+// The last line of a release build's bundle, which links expl.bundle.js.map kept next to it in the app (at most one newline
+// after it). The npm package does not ship the .map, so the import drops exactly this line; a link to another file, a
+// link followed by more lines or blank lines, and any other source map reference still mark a development build.
+const MAP_LINK = /\n\/\/# source[M]appingURL=expl\.bundle\.js\.map\n?$/;
 const SEMVER = /^\d+\.\d+\.\d+$/;
+// A release build names its version with the platform, as 17.0.5_MAC_ARM; the x.y.z before it is the Desktop version.
+const DESKTOP_VERSION = /^(\d+\.\d+\.\d+)(?:_[A-Z0-9_]+)?$/;
 
 // Throws when the bundle looks like a development build.
 function assertProductionBundle(text) {
@@ -45,9 +52,11 @@ function importRelease(from, root, version, commit) {
   const pkgSrc = path.join(from, "package.json");
   if (!fs.existsSync(bundleSrc)) throw new Error("Not found: " + bundleSrc);
   if (!fs.existsSync(pkgSrc)) throw new Error("Not found: " + pkgSrc);
-  const desktopVersion = JSON.parse(fs.readFileSync(pkgSrc, "utf8")).version;
-  if (!SEMVER.test(String(desktopVersion))) throw new Error("The version in the build's package.json is not x.y.z: " + desktopVersion);
-  const text = fs.readFileSync(bundleSrc, "utf8");
+  const buildVersion = JSON.parse(fs.readFileSync(pkgSrc, "utf8")).version;
+  const m = DESKTOP_VERSION.exec(String(buildVersion));
+  if (!m) throw new Error("The version in the build's package.json is not x.y.z or x.y.z_<platform>: " + buildVersion);
+  const desktopVersion = m[1];
+  const text = fs.readFileSync(bundleSrc, "utf8").replace(MAP_LINK, "");
   assertProductionBundle(text);
   // Built before anything is written, so that a section naming another Desktop version stops the import untouched.
   const changelog = path.join(root, "CHANGELOG.md");
@@ -71,7 +80,7 @@ function run(cmd, args, cwd) {
 }
 
 // Builds public/cli/expl.bundle.js in the tam clone `dir` with the expl-cli entry of the production webpack config.
-// The source map is turned off because the import refuses a bundle with a source map link.
+// The source map is turned off, so the bundle has no source map link, as an imported release build has none once MAP_LINK is dropped.
 function webpackBuild(dir) {
   run(process.execPath, [path.join(dir, "node_modules", "webpack", "bin", "webpack.js"), "--config", "webpack.production.config.js", "--config-name", "expl-cli", "--no-devtool"], dir);
 }

@@ -101,6 +101,60 @@ test("an internal word in an imported file fails the import without printing the
   assert.ok(!(r.stdout + r.stderr).includes(FAKE_WORD));
 });
 
+// The source map link of a release build, split so that this file does not hold the marker the content check looks for.
+const MAP = "//# source" + "MappingURL=";
+
+test("a release build named with its platform (17.0.5_MAC_ARM) is imported as Desktop 17.0.5", () => {
+  const root = tmpRoot();
+  const r = imp(root, fakeRelease("17.0.5_MAC_ARM"), "1.0.0");
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.match(r.stdout, /Imported version 1\.0\.0 \(built from Exploratory Desktop 17\.0\.5\)/);
+  assert.deepStrictEqual(changelogOf(root), [{ version: "1.0.0", desktopVersion: "17.0.5" }]);
+  assert.strictEqual(smoke(root).status, 0, smoke(root).stderr);
+});
+
+test("import refuses a build version that is neither x.y.z nor x.y.z_<platform>", () => {
+  for (const v of ["17.0", "17.0.5-rc.1", "17.0.5_", "v17.0.5", "17.0.5_mac"]) {
+    const root = tmpRoot();
+    const r = imp(root, fakeRelease(v), "1.0.0");
+    assert.notStrictEqual(r.status, 0, v);
+    assert.match(r.stderr, /not x\.y\.z or x\.y\.z_<platform>/, v);
+    assert.ok(!fs.existsSync(path.join(root, "package", "cli", "expl.bundle.js")), v);
+  }
+});
+
+test("import drops the source map link a release build ends with and keeps the rest byte for byte", () => {
+  // A release build ends with the link and no newline; one trailing newline is dropped with it too.
+  for (const ending of ["", "\n"]) {
+    const root = tmpRoot();
+    const from = fakeRelease("17.0.5_MAC_ARM", MAP + "expl.bundle.js.map");
+    const file = path.join(from, "cli", "expl.bundle.js");
+    const src = fs.readFileSync(file, "utf8").replace(/\n$/, "") + ending;
+    fs.writeFileSync(file, src);
+    const r = imp(root, from, "1.0.0");
+    assert.strictEqual(r.status, 0, r.stderr);
+    const got = fs.readFileSync(path.join(root, "package", "cli", "expl.bundle.js"), "utf8");
+    assert.strictEqual(got, src.slice(0, src.indexOf("\n" + MAP)), JSON.stringify(ending));
+    assert.strictEqual(smoke(root).status, 0, smoke(root).stderr);
+  }
+});
+
+test("import still refuses a source map link that is not the last line, is inline, names another file or has blank lines after it", () => {
+  const links = [
+    MAP + "expl.bundle.js.map\nconsole.log(1);", // not the last line
+    MAP + "data:application/json;base64,e30=", // inline
+    MAP + "other.bundle.js.map", // another file
+    MAP + "expl.bundle.js.map\n\n", // followed by blank lines
+  ];
+  for (const extra of links) {
+    const root = tmpRoot();
+    const r = imp(root, fakeRelease("17.0.5_MAC_ARM", extra), "1.0.0");
+    assert.notStrictEqual(r.status, 0, extra);
+    assert.match(r.stderr, /development build/, extra);
+    assert.ok(!fs.existsSync(path.join(root, "package", "cli", "expl.bundle.js")), extra);
+  }
+});
+
 test("import refuses a development build", () => {
   const root = tmpRoot();
   const marker = "/* ATTENTION: The \"" + "eval\" devtool has been used */";

@@ -12,13 +12,13 @@ node tools/import-release.cjs --tam <tam checkout> [--ref <commit>] --version <x
 
 `--ref` defaults to `origin/master`. The script resolves it to a commit in the tam checkout, clones that commit into a temporary folder with `git clone --shared` (the tam checkout itself is not changed), links the checkout's `node_modules` and `src/node_modules` into the clone, and builds only the `expl-cli` entry of tam's `webpack.production.config.js`, without a source map. The Desktop version is the one of `public/package.json` in that commit. It then imports the bundle as described below, writing the first line of the section as "Built from the `expl` in tam master <10-digit commit> (Exploratory Desktop <Desktop version>).", and removes the temporary clone, also when a step fails.
 
-When the bundle was built by hand, import its folder instead. It contains `package.json` and `cli/expl.bundle.js`:
+To import the `expl` of a released Desktop, or a bundle built by hand, import its folder instead. It contains `package.json` and `cli/expl.bundle.js`; in a release build it is `Exploratory.app/Contents/Resources/app.nw` (mount the dmg read-only):
 
 ```bash
 node tools/import-release.cjs --from <folder> --version <x.y.z>
 ```
 
-The section's first line is then "Built from the `expl` in Exploratory Desktop <Desktop version>.".
+The Desktop version is the one of that `package.json`: `x.y.z`, or `x.y.z_<platform>` as a release build names it (`17.0.5_MAC_ARM` is Desktop 17.0.5). The `expl` bundle is the same JavaScript on every platform, so one platform's build is enough. A release build's bundle ends with a comment line linking its source map `expl.bundle.js.map`; the package does not ship the map, so the import drops that last line and keeps the rest unchanged. Any other source map link still stops the import as a development build. The section's first line is then "Built from the `expl` in Exploratory Desktop <Desktop version>.".
 
 Both forms copy the bundle to `package/cli/`, set the version in `package/package.json` to `--version`, rebuild the two files under `skills/` by running the bundle with an empty home, and add a section to the top of `CHANGELOG.md` (`## <version> - <date>` and the first line above). When `CHANGELOG.md` already has a section for that version, its Desktop version must be the one of the build, or the import stops before writing anything. After the import the script runs the content check with the internal word list `.internal-words` of the repository root (one word per line, never committed), and fails when that file is missing, empty or unreadable. It refuses a development build.
 
